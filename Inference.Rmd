@@ -1,0 +1,117 @@
+---
+title: "Inference"
+author: "Richard G. Gardiner"
+date: "2/25/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+We generally want to test hypotheses about the population by looking at sample data.  
+
+We will be working with the NHANES data that comes from the `NHANES` package.  The data was collected by the CDC and be thought of as a random sample of US residents.
+
+## Data and Packages
+```{r}
+library(tidyverse)
+library(NHANES)
+library(infer)
+
+colnames(NHANES)
+```
+
+## EDA and Data Manipulation
+
+Now we will create a barplot of home ownership by gender
+
+```{r}
+ggplot(NHANES, aes(x = Gender, fill = HomeOwn)) + 
+  # Set the position to fill
+  geom_bar(position = "fill") +
+  ylab("Relative frequencies")
+```
+
+```{r}
+# Density plot of SleepHrsNight colored by SleepTrouble
+ggplot(NHANES, aes(x = SleepHrsNight, color = SleepTrouble)) + 
+  geom_density(adjust = 2) +   # Adjust by 2
+  facet_wrap(~ HealthGen)   # Facet by HealthGen
+```
+
+Filtering data for analysis
+```{r}
+homes <- NHANES %>%
+  # Select Gender and HomeOwn
+  select(Gender, HomeOwn) %>%
+  # Filter for HomeOwn equal to "Own" or "Rent"
+  filter(HomeOwn %in% c("Own", "Rent"))
+```
+
+
+As seen in the video, natural variability can be modeled from shuffling observations around to remove any relationships that might exist in the population. However, before you permute the data, you need to calculate the original observed statistic. In this exercise, you will calculate the difference in proportion of home owners who are men versus women.
+
+
+1. Compute the proportion of individuals who own a home. Note that this will calculate proportions for both genders since you've grouped by the Gender variable in the line before it. The proportion is given by the mean of the HomeOwn variable who "Own".
+2. Using the diff() function, calculate the difference in proportion of home ownership.
+```{r}
+diff_orig <- homes %>%   
+  # Group by gender
+  group_by(Gender) %>%
+  # Summarize proportion of homeowners
+  summarize(prop_own = mean(HomeOwn == "Own")) %>%
+  # Summarize difference in proportion of homeowners
+  summarize(obs_diff_prop = diff(prop_own)) # male - female
+```
+
+
+The infer package will allow you to model a particular null hypothesis and then randomize the data to calculate permuted statistics. In this exercise, after specifying your null hypothesis you will permute the home ownership variable 10 times. By doing so, you will ensure that there is no relationship between home ownership and gender, so any difference in home ownership proportion for female versus male will be due only to natural variability.
+```{r}
+# Perform 100 permutations
+homeown_perm <- homes %>%
+  specify(HomeOwn ~ Gender, success = "Own") %>%
+  hypothesize(null = "independence") %>% 
+  generate(reps = 100, type = "permute") %>% 
+  calculate(stat = "diff in props", order = c("male", "female"))
+  
+# Print results to console
+homeown_perm
+```
+
+Create a dotplot using th 100 differences in proportions.
+
+```{r}
+# Dotplot of 100 permuted differences in proportions
+ggplot(homeown_perm, aes(x = stat)) + 
+  geom_dotplot(binwidth = 0.001)
+```
+
+### Doing the same thing again
+
+This time we are doing the same with 1000 permutations using the same 4 verbs of the `infer` package.  These are:
+
+- specify
+- hypothesize
+- generate
+- calculate
+
+```{r}
+# Perform 1000 permutations
+homeown_perm <- homes %>%
+  # Specify HomeOwn vs. Gender, with `"Own" as success
+  specify(HomeOwn ~ Gender, success = "Own") %>%
+  # Use a null hypothesis of independence
+  hypothesize(null = "independence") %>% 
+  # Generate 1000 repetitions (by permutation)
+  generate(reps = 1000, type = "permute") %>% 
+  # Calculate the difference in proportions (male then female)
+  calculate(stat = "diff in props", order = c("male", "female"))
+
+# Density plot of 1000 permuted differences in proportions
+ggplot(homeown_perm, aes(x = stat)) + 
+  geom_density()
+```
+
